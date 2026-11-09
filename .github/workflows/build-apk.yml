@@ -1,0 +1,134 @@
+name: Build APK
+
+on:
+  push:
+    paths:
+      - 'upload/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      GODOT_VERSION: 4.2.2
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Unzip all parts in order
+        run: |
+          find upload -maxdepth 1 -name '*.zip' | sort | while read -r z; do
+            echo "Extracting $z"
+            rm -rf /tmp/x && mkdir /tmp/x
+            unzip -q -o "$z" -d /tmp/x
+            n=$(ls -A /tmp/x | wc -l)
+            first=$(ls -A /tmp/x | head -n 1)
+            if [ "$n" = "1" ] && [ -d "/tmp/x/$first" ]; then
+              src="/tmp/x/$first"
+            else
+              src="/tmp/x"
+            fi
+            cp -a "$src"/. .
+          done
+          ls -la
+
+      - name: Save extracted project to repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "Auto-extract parts from upload folder"
+          git push || true
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Download Godot and export templates
+        run: |
+          BASE=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          wget -q $BASE/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip -O godot.zip
+          unzip -q godot.zip
+          sudo mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          sudo chmod +x /usr/local/bin/godot
+          wget -q $BASE/Godot_v${GODOT_VERSION}-stable_export_templates.tpz -O templates.tpz
+          T=$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p $T
+          unzip -q -j templates.tpz 'templates/android_*' 'templates/version.txt' -d $T
+          ls -la $T
+          rm -f godot.zip templates.tpz
+
+      - name: Android SDK check
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls $ANDROID_HOME/build-tools $ANDROID_HOME/platforms
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" || true
+          ls $ANDROID_HOME/build-tools $ANDROID_HOME/platforms
+
+      - name: Setup Godot Android settings
+        run: |
+          keytool -genkeypair -v -keystore $HOME/debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 9999 -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p $HOME/.config/godot
+          cat > $HOME/.config/godot/editor_settings-4.tres << EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          export/android/force_system_user = false
+          export/android/shutdown_adb_on_exit = true
+          EOF
+          cat $HOME/.config/godot/editor_settings-4.tres
+
+      - name: Create export preset
+        run: |
+          cat > export_presets.cfg << 'EOF'
+          [preset.0]
+
+          name="Android"
+          platform="Android"
+          runnable=true
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path="build/lahore-driving.apk"
+
+          [preset.0.options]
+
+          gradle_build/use_gradle_build=false
+          architectures/armeabi-v7a=false
+          architectures/arm64-v8a=true
+          architectures/x86=false
+          architectures/x86_64=false
+          version/code=1
+          version/name="1.0"
+          package/unique_name="com.example.lahoredriving"
+          package/name="Lahore Driving"
+          package/signed=true
+          screen/immersive_mode=true
+          EOF
+
+      - name: Build APK
+        run: |
+          mkdir -p build
+          godot --headless --import || true
+          set +e
+          godot --headless --export-debug "Android" build/lahore-driving.apk > build/log.txt 2>&1
+          CODE=$?
+          echo "===== EXIT CODE: $CODE ====="
+          tail -n 60 build/log.txt
+          ls -la build
+          exit $CODE
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: lahore-driving-apk
+          path: build/*.apk
