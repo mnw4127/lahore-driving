@@ -42,7 +42,14 @@ jobs:
           git diff --cached --quiet || git commit -m "Auto-extract parts from upload folder"
           git push || true
 
-      - uses: actions/setup-java@v4
+      - name: Enable ETC2/ASTC for Android
+        run: |
+          if ! grep -q "import_etc2_astc" project.godot; then
+            sed -i '/^\[rendering\]/a textures/vram_compression/import_etc2_astc=true' project.godot
+          fi
+          cat project.godot
+
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
@@ -64,7 +71,6 @@ jobs:
       - name: Android SDK check
         run: |
           echo "ANDROID_HOME=$ANDROID_HOME"
-          ls $ANDROID_HOME/build-tools $ANDROID_HOME/platforms
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
           $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "build-tools;34.0.0" "platforms;android-34" || true
           ls $ANDROID_HOME/build-tools $ANDROID_HOME/platforms
@@ -85,7 +91,6 @@ jobs:
           export/android/force_system_user = false
           export/android/shutdown_adb_on_exit = true
           EOF
-          cat $HOME/.config/godot/editor_settings-4.tres
 
       - name: Create export preset
         run: |
