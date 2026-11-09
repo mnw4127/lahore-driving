@@ -1,11 +1,15 @@
 extends Node3D
-# Builds the whole Phase A test world in code: sky, road, intersection, car, cameras, HUD.
+# Loads real roads from res://map_data/map.osm if present, otherwise builds a test road.
+
+const MAP_PATH := "res://map_data/map.osm"
 
 var car: VehicleBody3D
 var chase_cam: Camera3D
 var cockpit_cam: Camera3D
 var hud: CanvasLayer
 var first_person := false
+var spawn_pos := Vector3(2.0, 1.0, 0.0)
+var spawn_yaw := 0.0
 
 
 func _ready() -> void:
@@ -28,8 +32,18 @@ func _make_environment() -> void:
 
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -30, 0)
-	sun.shadow_enabled = false  # keep mobile fast
+	sun.shadow_enabled = false
 	add_child(sun)
+
+
+func _make_world() -> void:
+	var loader: Node3D = load("res://scripts/osm_loader.gd").new()
+	add_child(loader)
+	if loader.load_map(MAP_PATH):
+		spawn_pos = loader.spawn_pos
+		spawn_yaw = loader.spawn_yaw
+	else:
+		_make_test_world()
 
 
 func _box(size: Vector3, pos: Vector3, color: Color) -> void:
@@ -51,24 +65,18 @@ func _box(size: Vector3, pos: Vector3, color: Color) -> void:
 	add_child(body)
 
 
-func _make_world() -> void:
-	# Ground
+func _make_test_world() -> void:
 	_box(Vector3(800, 1, 1200), Vector3(0, -0.5, -300), Color(0.25, 0.5, 0.2))
-	# Main road (along -Z)
 	_box(Vector3(10, 0.05, 500), Vector3(0, 0.025, -200), Color(0.15, 0.15, 0.17))
-	# Cross road = intersection at z = -120
 	_box(Vector3(400, 0.05, 10), Vector3(0, 0.03, -120), Color(0.15, 0.15, 0.17))
-	# Simple buildings and trees along the road (low-poly blockout)
 	for i in range(0, 24):
 		var z := 40.0 - i * 20.0
 		if abs(z + 120.0) < 12.0:
 			continue
 		for side in [-1, 1]:
 			var x: float = side * 9.0
-			# tree: trunk + crown
 			_box(Vector3(0.4, 3, 0.4), Vector3(x, 1.5, z), Color(0.4, 0.25, 0.1))
 			_box(Vector3(2.2, 2.2, 2.2), Vector3(x, 4, z), Color(0.1, 0.4, 0.1))
-			# building behind
 			var h: float = 6.0 + (i % 4) * 3.0
 			_box(Vector3(10, h, 12), Vector3(side * 20.0, h / 2.0, z - 6), Color(0.75, 0.7, 0.62))
 
@@ -77,7 +85,8 @@ func _make_car() -> void:
 	car = VehicleBody3D.new()
 	car.set_script(load("res://scripts/car.gd"))
 	car.mass = 800.0
-	car.position = Vector3(2.0, 1.0, 0.0)  # left lane (Pakistan drives on left)
+	car.position = spawn_pos
+	car.rotation.y = spawn_yaw
 
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
@@ -104,7 +113,6 @@ func _make_car() -> void:
 	cabin.position = Vector3(0, 1.25, 0.3)
 	car.add_child(cabin)
 
-	# Wheels: front = -Z (steering), rear = +Z (traction)
 	for x in [-0.9, 0.9]:
 		for z in [-1.3, 1.3]:
 			var w := VehicleWheel3D.new()
@@ -129,18 +137,19 @@ func _make_car() -> void:
 			w.add_child(wm)
 			car.add_child(w)
 
-	# Cockpit camera (right-hand drive: driver on +X side)
 	cockpit_cam = Camera3D.new()
 	cockpit_cam.position = Vector3(0.4, 1.3, -0.1)
 	cockpit_cam.fov = 75
+	cockpit_cam.far = 1500.0
 	car.add_child(cockpit_cam)
 
 	add_child(car)
 
 	chase_cam = Camera3D.new()
 	chase_cam.fov = 70
+	chase_cam.far = 1500.0
 	add_child(chase_cam)
-	chase_cam.global_position = car.global_position + Vector3(0, 3, 7)
+	chase_cam.global_position = car.global_position + car.global_transform.basis.z * 7.0 + Vector3(0, 3, 0)
 	chase_cam.make_current()
 
 
@@ -165,14 +174,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	# Smooth chase camera behind the car
 	var back := car.global_transform.basis.z
 	var target := car.global_position + back * 7.0 + Vector3(0, 2.8, 0)
 	chase_cam.global_position = chase_cam.global_position.lerp(target, clampf(delta * 5.0, 0.0, 1.0))
 	chase_cam.look_at(car.global_position + Vector3(0, 1.0, 0), Vector3.UP)
 
-	# Fell off the world? Reset.
 	if car.global_position.y < -10.0:
 		car.linear_velocity = Vector3.ZERO
 		car.angular_velocity = Vector3.ZERO
-		car.global_transform = Transform3D(Basis(), Vector3(2.0, 1.0, 0.0))
+		car.global_transform = Transform3D(Basis(Vector3.UP, spawn_yaw), spawn_pos)
