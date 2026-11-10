@@ -1,6 +1,8 @@
 extends VehicleBody3D
-# Car controls. Front of the car is -Z. steer_input: +1 = left, -1 = right.
-# Tune these numbers on a real phone.
+# Car controls. The nose of the car points to -Z.
+# In Godot a NEGATIVE engine_force drives the car toward the nose (forward),
+# a POSITIVE engine_force drives it backward (reverse).
+# steer_input: +1 = left, -1 = right.
 
 const MAX_ENGINE := 2500.0
 const MAX_BRAKE := 20.0
@@ -44,11 +46,11 @@ func _physics_process(delta: float) -> void:
 	var limit := lerpf(1.0, 0.3, clampf(speed / 25.0, 0.0, 1.0))
 	steering = move_toward(steering, steer * MAX_STEER * limit, delta * 2.5)
 
-	# Engine
+	# Engine: D mode = forward (negative force), R mode = reverse (positive force)
 	if reverse_mode:
-		engine_force = -gas * MAX_ENGINE * 0.5 if speed < MAX_SPEED_REV else 0.0
+		engine_force = gas * MAX_ENGINE * 0.5 if speed < MAX_SPEED_REV else 0.0
 	else:
-		engine_force = gas * MAX_ENGINE if speed < MAX_SPEED_FWD else 0.0
+		engine_force = -gas * MAX_ENGINE if speed < MAX_SPEED_FWD else 0.0
 
 	# Brakes
 	if hb:
