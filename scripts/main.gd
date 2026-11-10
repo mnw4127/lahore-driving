@@ -90,55 +90,33 @@ func _make_car() -> void:
 
 	var cs := CollisionShape3D.new()
 	var sh := BoxShape3D.new()
-	sh.size = Vector3(1.8, 0.7, 4.0)
+	sh.size = Vector3(1.9, 0.7, 4.8)
 	cs.shape = sh
-	cs.position = Vector3(0, 0.6, 0)
+	cs.position = Vector3(0, 0.65, 0)
 	car.add_child(cs)
 
-	var body := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = Vector3(1.8, 0.7, 4.0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.85, 0.85, 0.9)
-	bm.material = mat
-	body.mesh = bm
-	body.position = Vector3(0, 0.6, 0)
-	car.add_child(body)
+	# Luxury convertible body
+	var model: Node3D = load("res://scripts/car_model.gd").new()
+	car.add_child(model)
 
-	var cabin := MeshInstance3D.new()
-	var cm := BoxMesh.new()
-	cm.size = Vector3(1.6, 0.6, 2.0)
-	cm.material = mat
-	cabin.mesh = cm
-	cabin.position = Vector3(0, 1.25, 0.3)
-	car.add_child(cabin)
-
-	for x in [-0.9, 0.9]:
-		for z in [-1.3, 1.3]:
+	# Wheels: front = -Z (steering), rear = +Z (traction)
+	for x in [-0.93, 0.93]:
+		for z in [-1.55, 1.50]:
 			var w := VehicleWheel3D.new()
-			w.position = Vector3(x, 0.35, z)
-			w.wheel_radius = 0.35
+			w.position = Vector3(x, 0.36, z)
+			w.wheel_radius = 0.36
 			w.wheel_rest_length = 0.15
 			w.suspension_travel = 0.3
 			w.suspension_stiffness = 40.0
 			w.wheel_friction_slip = 3.0
 			w.use_as_steering = z < 0
 			w.use_as_traction = z > 0
-			var wm := MeshInstance3D.new()
-			var cyl := CylinderMesh.new()
-			cyl.top_radius = 0.35
-			cyl.bottom_radius = 0.35
-			cyl.height = 0.3
-			var wmat := StandardMaterial3D.new()
-			wmat.albedo_color = Color(0.05, 0.05, 0.05)
-			cyl.material = wmat
-			wm.mesh = cyl
-			wm.rotation_degrees = Vector3(0, 0, 90)
-			w.add_child(wm)
+			w.add_child(model.make_wheel_visual())
 			car.add_child(w)
 
+	# Cockpit camera (right-hand drive: driver on +X side)
 	cockpit_cam = Camera3D.new()
-	cockpit_cam.position = Vector3(0.4, 1.3, -0.1)
+	cockpit_cam.position = Vector3(0.42, 1.25, 0.25)
 	cockpit_cam.fov = 75
 	cockpit_cam.far = 1500.0
 	car.add_child(cockpit_cam)
@@ -149,7 +127,7 @@ func _make_car() -> void:
 	chase_cam.fov = 70
 	chase_cam.far = 1500.0
 	add_child(chase_cam)
-	chase_cam.global_position = car.global_position + car.global_transform.basis.z * 7.0 + Vector3(0, 3, 0)
+	chase_cam.global_position = car.global_position + car.global_transform.basis.z * 8.0 + Vector3(0, 3, 0)
 	chase_cam.make_current()
 
 
@@ -175,7 +153,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _physics_process(delta: float) -> void:
 	var back := car.global_transform.basis.z
-	var target := car.global_position + back * 7.0 + Vector3(0, 2.8, 0)
+	var target := car.global_position + back * 8.0 + Vector3(0, 2.8, 0)
 	chase_cam.global_position = chase_cam.global_position.lerp(target, clampf(delta * 5.0, 0.0, 1.0))
 	chase_cam.look_at(car.global_position + Vector3(0, 1.0, 0), Vector3.UP)
 
